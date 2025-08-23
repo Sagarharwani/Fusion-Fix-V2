@@ -3,54 +3,115 @@
     "id": "AP-001",
     "title": "AP invoice import error: taxes not derived",
     "module": "AP",
-    "root_cause": "Supplier Site tax options misconfigured",
-    "pre_checks": [
-      "Verify Supplier Site → Invoicing: Term Date Basis & Payment Terms",
-      "Check Tax Regime subscription and party tax profiles"
+    "severity": "Medium",
+    "tags": ["AP", "import", "tax", "DEV", "TEST", "UAT", "PROD"],
+    "rca": "Supplier/site tax configuration incomplete or incorrect; tax regime/rules not matching the invoice's BU, ship-to/bill-to, or line attributes.",
+    "prechecks": [
+      "Confirm BU, ledger, currency on invoice match setup",
+      "Verify Supplier Site: Invoicing options → default tax settings present",
+      "Check tax regime, tax rules, and determining factors for the country",
+      "Validate item/category and ship-to/bill-to locations on lines"
     ],
     "steps": [
-      "Update Supplier Site Invoicing options to correct Term Date Basis",
-      "Ensure Supplier/Party Tax Profile has correct tax classification codes",
-      "Reprocess the invoice import"
+      "Open Supplier Site → Invoicing: set default tax classification / party tax profile",
+      "Review Tax Configuration: ensure regime, taxes, statuses, and rates are active",
+      "Update tax rules to cover the determining factors used by AP import",
+      "Reprocess the invoice through Import Payables Invoices",
+      "Verify line-level tax calculated as expected"
     ],
-    "post_validation": [
-      "Invoice validates without warning; tax lines generated",
-      "Tax summary shows expected regime/rate"
+    "validation": [
+      "Invoice imported successfully with taxes derived",
+      "Tax distribution generated and accounted without errors"
     ],
-    "tags": ["import", "tax", "warning"]
+    "links": [
+      { "label": "Oracle Doc: Taxes in Payables", "url": "https://docs.oracle.com/" }
+    ],
+    "lastUpdated": "2025-08-24 01:05:00"
   },
   {
     "id": "GL-001",
     "title": "GL journal cannot be posted due to sequencing mismatch",
     "module": "GL",
-    "root_cause": "Sequence assignment not aligned to ledger/period",
-    "pre_checks": [
-      "Check Sequencing assignment for Ledger/Journal Category",
-      "Verify period status and sequence range availability"
+    "severity": "High",
+    "tags": ["GL", "journal", "sequence", "DEV", "TEST", "UAT", "PROD"],
+    "rca": "Sequencing assignment for Spreadsheet source and Adjustment category not aligned with fiscal year setup; FY 2024/2025 overlap or missing period mapping.",
+    "prechecks": [
+      "Check existing sequencing assignments and their start/end dates",
+      "Verify Journal Source = Spreadsheet and Category = Adjustment exist",
+      "Confirm ledger → accounting calendar periods and fiscal year boundaries",
+      "Ensure no duplicate or overlapping assignments for same source/category"
     ],
     "steps": [
-      "Adjust sequence assignment for affected category",
-      "Open period or extend sequence range",
-      "Revalidate and post the journal"
+      "End-date the conflicting sequencing assignment (if overlapping)",
+      "Create a new assignment for FY 2024 with Source=Spreadsheet, Category=Adjustment",
+      "Set Start Date = 2024-01-01 and End Date = 2024-12-31 (example)",
+      "Enable the assignment; clear cache if applicable",
+      "Retry posting the journal"
     ],
-    "post_validation": ["Journal posts successfully", "Sequence applied in order"],
-    "tags": ["journal", "sequence"]
+    "validation": [
+      "Journal posts successfully with the correct sequence number",
+      "No further 'sequence mismatch' or 'date not in range' errors"
+    ],
+    "links": [
+      { "label": "Oracle Doc: Journal Sequencing", "url": "https://docs.oracle.com/" }
+    ],
+    "lastUpdated": "2025-08-24 01:06:00"
   },
   {
     "id": "PAY-001",
     "title": "Payment Process Request not generating format output",
     "module": "Payments",
-    "root_cause": "Payment Process Profile (PPP) format mapping incomplete",
-    "pre_checks": [
-      "Verify PPP format mapping to external payee",
-      "Check template availability & BI Publisher permissions"
+    "severity": "Medium",
+    "tags": ["Payments", "PPR", "format", "DEV", "TEST", "UAT", "PROD"],
+    "rca": "Payment Process Profile not linked to the required disbursement bank account or incorrect payment document/format mapping.",
+    "prechecks": [
+      "Verify PPP assigned to the PPR and to the disbursement bank account",
+      "Check Payment Document sequence and active status",
+      "Confirm format program and layout template are active and accessible",
+      "Review supplier/site payment methods and remit-to account setup"
     ],
     "steps": [
-      "Update PPP with correct format and template",
-      "Grant BI Publisher template access",
-      "Rerun PPR format stage"
+      "Open Payment Process Profile and set the correct Format Program & Template",
+      "Attach PPP to the disbursement bank account used by the PPR",
+      "Ensure Payment Document is active and has available numbers",
+      "Re-submit the PPR from 'Manage Payment Process Requests'",
+      "Validate output file generation in Payments → View Output"
     ],
-    "post_validation": ["Output generated in Transmission", "File delivered to payment system"],
-    "tags": ["PPR", "format", "PPP"]
+    "validation": [
+      "PPR completes with 'formatted' payments",
+      "Output file is generated and downloadable; payments accounted"
+    ],
+    "links": [
+      { "label": "Oracle Doc: PPR Setup", "url": "https://docs.oracle.com/" }
+    ],
+    "lastUpdated": "2025-08-24 01:07:00"
+  },
+  {
+    "id": "AR-001",
+    "title": "Dunning letters not generated for certain customers (case 1)",
+    "module": "AR",
+    "severity": "Medium",
+    "tags": ["Collections – Dunning", "DEV", "TEST", "UAT", "PROD", "AR", "Collections"],
+    "rca": "Dunning configuration/strategy assignment does not match customer profile class, delinquency thresholds, or level transitions.",
+    "prechecks": [
+      "Check Dunning Configuration: levels, days overdue, balances, currencies",
+      "Verify Customer Profile and Profile Class: dunning enabled, strategy assignment",
+      "Confirm transactions are overdue and not on dispute/hold",
+      "Review Dunning assignment rules by BU and site"
+    ],
+    "steps": [
+      "Align configuration thresholds with business policy",
+      "Assign correct strategy at Customer/Profile Class/Site",
+      "Run 'Generate Dunning Letters' with applicable BU/date",
+      "Review log for excluded transactions and correct master data"
+    ],
+    "validation": [
+      "Dunning letters generated and appear in Transactions > Print Documents",
+      "Customers included per strategy level; no unexpected exclusions"
+    ],
+    "links": [
+      { "label": "Oracle Doc", "url": "https://docs.oracle.com/" }
+    ],
+    "lastUpdated": "2025-08-24 01:09:04"
   }
 ]
