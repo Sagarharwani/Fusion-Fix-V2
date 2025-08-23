@@ -1,208 +1,293 @@
-import { useEffect, useMemo, useState } from "react";
-import { Search, Filter, ListFilter, BarChart3, Link as LinkIcon, Play } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Bar, BarChart, XAxis, YAxis, Tooltip } from "recharts";
+import * as React from "react";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
+/** ---------- Types ---------- */
 type Solution = {
-  id: string;
+  id: string | number;
   title: string;
-  module?: string;          // AP, AR, GL, Payments, SLA, Approvals, etc.
-  severity?: "Low" | "Medium" | "High" | "Critical";
-  rootCause?: string;
-  preChecks?: string[];
-  steps?: string[];
-  validation?: string[];
-  oracleDocs?: string[];    // Oracle doc links
-  videos?: string[];        // YouTube links
+  module: string; // e.g., "AP", "AR", "GL", "Payments", etc.
+  // other fields can exist; we only need module/title for this page
 };
 
-const TAGS = ["AP","AR","GL","Payments","SLA","Approvals","Tax","Supplier","Invoices","UAT","DEV","PROD"];
-const COLORS = ["#6366f1","#22c55e","#f59e0b","#ef4444","#06b6d4","#a855f7","#10b981","#f97316"];
+/** ---------- Helpers ---------- */
+const COLORS = [
+  "#6366F1", // indigo
+  "#22C55E", // green
+  "#F59E0B", // amber
+  "#EF4444", // rose
+  "#06B6D4", // cyan
+  "#A855F7", // violet
+  "#84CC16", // lime
+  "#F97316", // orange
+];
 
+const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
+
+/** ---------- UI Chips / Small Components ---------- */
+const Box = ({ children }: { children: React.ReactNode }) => (
+  <div className="rounded-xl border bg-white p-4 shadow-sm">{children}</div>
+);
+
+const PageHeader = () => (
+  <div className="flex items-center justify-between mb-4">
+    <h1 className="text-2xl font-bold">Fusion Finance Fixes</h1>
+    <a
+      className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
+      href="https://github.com/"
+      target="_blank"
+      rel="noreferrer"
+    >
+      View Repo
+      <svg
+        className="h-4 w-4"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path d="M12.293 2.293a1 1 0 011.414 0l4 4A1 1 0 0117 8h-3v6a1 1 0 11-2 0V8H9a1 1 0 110-2h3V3a1 1 0 01.293-.707z" />
+        <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 112 0v3a4 4 0 01-4 4H5a4 4 0 01-4-4V7a4 4 0 014-4h3a1 1 0 110 2H5z" />
+      </svg>
+    </a>
+  </div>
+);
+
+/** ---------- Main App ---------- */
 export default function App() {
-  const [all, setAll] = useState<Solution[]>([]);
-  const [q, setQ] = useState("");
-  const [module, setModule] = useState<string>("All");
-  const [severity, setSeverity] = useState<string>("All");
+  const [solutions, setSolutions] = React.useState<Solution[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [query, setQuery] = React.useState("");
+  const [moduleFilter, setModuleFilter] = React.useState<string>("All");
 
-  useEffect(() => {
-    // public/solutions.json is served at /solutions.json in Vite/Vercel
-    fetch("/solutions.json")
-      .then(r => r.json())
-      .then((data: Solution[]) => setAll(data))
-      .catch(() => setAll([]));
+  React.useEffect(() => {
+    (async () => {
+      try {
+        // solutions.json should be in /public, so this path works in Vite/Vercel
+        const res = await fetch("/solutions.json", { cache: "no-store" });
+        const data = (await res.json()) as Solution[];
+        setSolutions(data);
+      } catch (e) {
+        console.error("Failed to load solutions.json", e);
+        setSolutions([]); // safe fallback
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  const modules = useMemo(() => {
-    const m = new Set<string>();
-    all.forEach(x => x.module && m.add(x.module));
-    return ["All", ...Array.from(m).sort()];
-  }, [all]);
+  // All modules (for dropdown)
+  const modules = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const s of solutions) if (s.module) set.add(s.module);
+    return ["All", ...Array.from(set).sort()];
+  }, [solutions]);
 
-  const severities = ["All","Low","Medium","High","Critical"];
-
-  const filtered = useMemo(() => {
-    return all.filter(s => {
-      const hitQ =
-        !q ||
-        s.title?.toLowerCase().includes(q.toLowerCase()) ||
-        s.rootCause?.toLowerCase().includes(q.toLowerCase());
-      const hitM = module === "All" || s.module === module;
-      const hitS = severity === "All" || s.severity === severity;
-      return hitQ && hitM && hitS;
+  // Apply filters
+  const filteredSolutions = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return solutions.filter((s) => {
+      if (moduleFilter !== "All" && s.module !== moduleFilter) return false;
+      if (!q) return true;
+      return (
+        (s.title || "").toLowerCase().includes(q) ||
+        (s.module || "").toLowerCase().includes(q)
+      );
     });
-  }, [all, q, module, severity]);
+  }, [solutions, query, moduleFilter]);
 
-  const byModule = useMemo(() => {
-    const map: Record<string, number> = {};
-    filtered.forEach(s => {
-      const key = s.module ?? "Unknown";
-      map[key] = (map[key] || 0) + 1;
-    });
-    return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, [filtered]);
+  // Build module counts
+  const byModuleMap = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of filteredSolutions) {
+      const key = s.module || "Unspecified";
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [filteredSolutions]);
 
-  const bySeverity = useMemo(() => {
-    const order = ["Low","Medium","High","Critical","Unknown"];
-    const map: Record<string, number> = {};
-    filtered.forEach(s => {
-      const key = s.severity ?? "Unknown";
-      map[key] = (map[key] || 0) + 1;
-    });
-    return order
-      .filter(k => map[k])
-      .map(k => ({ name: k, value: map[k] }));
-  }, [filtered]);
+  const total = React.useMemo(
+    () => filteredSolutions.length,
+    [filteredSolutions]
+  );
+
+  const chartData = React.useMemo(
+    () =>
+      Array.from(byModuleMap.entries()).map(([name, count]) => ({
+        name,
+        count,
+      })),
+    [byModuleMap]
+  );
+
+  // For the table: sort modules by count desc
+  const tableRows = React.useMemo(
+    () =>
+      chartData
+        .slice()
+        .sort((a, b) => b.count - a.count)
+        .map((row) => ({
+          ...row,
+          percent: total ? row.count / total : 0,
+        })),
+    [chartData, total]
+  );
 
   return (
-    <div className="max-w-6xl mx-auto p-4 space-y-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Fusion Finance Fixes</h1>
-        <a
-          className="text-sm text-indigo-600 hover:underline"
-          href="https://github.com/Sagarharwani/Fusion-Fix-V2"
-          target="_blank"
-          rel="noreferrer"
-        >
-          View Repo
-        </a>
-      </header>
+    <div className="mx-auto max-w-7xl p-4">
+      <PageHeader />
 
       {/* Filters */}
-      <section className="grid md:grid-cols-4 gap-3">
-        <div className="col-span-2 flex items-center gap-2 bg-white rounded-xl border px-3 py-2">
-          <Search className="w-4 h-4 text-slate-400" />
-          <input
-            className="w-full outline-none"
-            placeholder="Search title, root cause…"
-            value={q}
-            onChange={e => setQ(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2 bg-white rounded-xl border px-3 py-2">
-          <ListFilter className="w-4 h-4 text-slate-400" />
-          <select className="w-full outline-none" value={module} onChange={e => setModule(e.target.value)}>
-            {modules.map(m => <option key={m}>{m}</option>)}
-          </select>
-        </div>
-        <div className="flex items-center gap-2 bg-white rounded-xl border px-3 py-2">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <select className="w-full outline-none" value={severity} onChange={e => setSeverity(e.target.value)}>
-            {severities.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-      </section>
+      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search title, root cause, module..."
+          className="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring"
+        />
+        <select
+          value={moduleFilter}
+          onChange={(e) => setModuleFilter(e.target.value)}
+          className="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring"
+        >
+          {modules.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
 
-      {/* Stats */}
-      <section className="grid md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border p-4">
-          <h3 className="font-medium mb-2">By Module</h3>
-          <div className="h-56">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg border px-3 py-2">
+            <div className="text-xs text-slate-500">Total Articles</div>
+            <div className="text-lg font-semibold">{loading ? "…" : total}</div>
+          </div>
+          <div className="rounded-lg border px-3 py-2">
+            <div className="text-xs text-slate-500">Modules in View</div>
+            <div className="text-lg font-semibold">{byModuleMap.size}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Chart + Table */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Pie Chart */}
+        <Box>
+          <h3 className="font-semibold mb-2">By Module</h3>
+          <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie dataKey="value" data={byModule} innerRadius={40} outerRadius={70}>
-                  {byModule.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                <Pie
+                  data={chartData}
+                  dataKey="count"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={95}
+                  labelLine={false}
+                  label={({ name, value }) => {
+                    const p = total ? Number(value) / total : 0;
+                    return `${name} (${pct(p)})`;
+                  }}
+                >
+                  {chartData.map((entry, idx) => (
+                    <Cell
+                      key={`cell-${entry.name}`}
+                      fill={COLORS[idx % COLORS.length]}
+                    />
+                  ))}
                 </Pie>
-                <Tooltip />
+
+                <Tooltip
+                  formatter={(value: any, _n, { payload }) => {
+                    const v = Number(value);
+                    const p = total ? v / total : 0;
+                    return [`${v} • ${pct(p)}`, payload?.name];
+                  }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  formatter={(value: string, entry: any) => {
+                    const count = entry?.payload?.count ?? 0;
+                    const p = total ? count / total : 0;
+                    return `${value} — ${pct(p)} (${count})`;
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </Box>
 
-        <div className="bg-white rounded-xl border p-4 col-span-2">
-          <div className="flex items-center gap-2 mb-2">
-            <BarChart3 className="w-4 h-4" /><h3 className="font-medium">By Severity</h3>
+        {/* Stats Table */}
+        <Box>
+          <h3 className="font-semibold mb-2">Module-wise Totals</h3>
+
+          <div className="mb-2 text-sm text-slate-600">
+            Total Articles:{" "}
+            <span className="font-semibold text-slate-900">{total}</span>
           </div>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={bySeverity}>
-                <XAxis dataKey="name" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b bg-slate-50 text-left">
+                  <th className="px-3 py-2">Module</th>
+                  <th className="px-3 py-2">Count</th>
+                  <th className="px-3 py-2">% of Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={3} className="px-3 py-4 text-slate-500">
+                      No results for the current filters.
+                    </td>
+                  </tr>
+                )}
+                {tableRows.map((row, i) => (
+                  <tr key={row.name} className="border-b last:border-0">
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full"
+                          style={{
+                            backgroundColor: COLORS[i % COLORS.length],
+                          }}
+                        />
+                        <span className="font-medium">{row.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">{row.count}</td>
+                    <td className="px-3 py-2">{pct(row.percent)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      </section>
+        </Box>
+      </div>
 
-      {/* Results */}
-      <section className="bg-white rounded-xl border overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <div className="text-sm text-slate-600">{filtered.length} solutions</div>
-          <div className="text-xs text-slate-400">Tip: extend <code>public/solutions.json</code> with more fields.</div>
-        </div>
-
-        <ul className="divide-y">
-          {filtered.map(s => (
-            <li key={s.id} className="px-4 py-4 hover:bg-slate-50">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h4 className="font-medium">{s.title}</h4>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                    {s.module && <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">Module: {s.module}</span>}
-                    {s.severity && <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-600">Severity: {s.severity}</span>}
-                  </div>
-                  {s.rootCause && <p className="mt-2 text-sm text-slate-600"><b>Root cause:</b> {s.rootCause}</p>}
-                  {s.preChecks?.length ? (
-                    <div className="mt-2">
-                      <p className="text-sm font-medium">Pre-checks</p>
-                      <ul className="list-disc ml-5 text-sm text-slate-700">
-                        {s.preChecks.map((x,i)=><li key={i}>{x}</li>)}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {s.steps?.length ? (
-                    <div className="mt-2">
-                      <p className="text-sm font-medium">Resolution steps</p>
-                      <ol className="list-decimal ml-5 text-sm text-slate-700">
-                        {s.steps.map((x,i)=><li key={i}>{x}</li>)}
-                      </ol>
-                    </div>
-                  ) : null}
-                  {(s.oracleDocs?.length || s.videos?.length) ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {s.oracleDocs?.map((u,i)=>(
-                        <a key={i} href={u} target="_blank" className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline">
-                          <LinkIcon className="w-3 h-3"/> Oracle Doc
-                        </a>
-                      ))}
-                      {s.videos?.map((u,i)=>(
-                        <a key={i} href={u} target="_blank" className="inline-flex items-center gap-1 text-xs text-rose-600 hover:underline">
-                          <Play className="w-3 h-3"/> Video
-                        </a>
-                      ))}
-                    </div>
-                  ):null}
-                </div>
-              </div>
+      {/* (Optional) simple list of titles underneath */}
+      <Box>
+        <h3 className="font-semibold mb-2">{total} Articles</h3>
+        <ul className="space-y-1">
+          {filteredSolutions.map((s) => (
+            <li key={s.id} className="flex gap-2">
+              <span className="inline-flex min-w-[64px] justify-center rounded-md bg-slate-100 px-2 text-xs font-medium text-slate-700">
+                {s.module}
+              </span>
+              <span className="text-slate-800">{s.title}</span>
             </li>
           ))}
         </ul>
-      </section>
-
-      <footer className="py-6 text-center text-xs text-slate-400">
-        Data file: <code>/public/solutions.json</code> — add as many records as you like (5,000+ works fine).
-      </footer>
+      </Box>
     </div>
   );
 }
