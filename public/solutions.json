@@ -3,37 +3,54 @@
     "id": "AP-001",
     "title": "AP invoice import error: taxes not derived",
     "module": "AP",
-    "severity": "High",
-    "tags": ["Tax", "Import", "Supplier Site"],
-    "root_cause": "Supplier Site tax options misconfigured; Term Date Basis not aligned with requirement.",
+    "root_cause": "Supplier Site tax options misconfigured",
     "pre_checks": [
-      "Verify Supplier Site ➜ Invoicing: Term Date Basis & Payment Terms",
+      "Verify Supplier Site → Invoicing: Term Date Basis & Payment Terms",
       "Check Tax Regime subscription and party tax profiles"
     ],
     "steps": [
-      "Update Supplier Site Invoicing options to correct Term Date Basis.",
-      "Ensure Supplier/Party Tax Profile has correct tax classification codes.",
-      "Re-import the invoice or create a new test invoice to validate."
+      "Update Supplier Site Invoicing options to correct Term Date Basis",
+      "Ensure Supplier/Party Tax Profile has correct tax classification codes",
+      "Reprocess the invoice import"
     ],
     "post_validation": [
-      "Invoice validates without warning; tax lines generated in the distribution.",
-      "Tax summary shows expected regime/rate; accounting includes tax lines."
+      "Invoice validates without warning; tax lines generated",
+      "Tax summary shows expected regime/rate"
     ],
-    "links": [
-      {
-        "label": "Oracle Doc: Configure Payables Tax",
-        "url": "https://docs.oracle.com/..."
-      },
-      {
-        "label": "MOS Note 2971583.1",
-        "url": "https://support.oracle.com/epmos/faces/DocumentDisplay?id=2971583.1"
-      },
-      {
-        "label": "YouTube: Payables Tax Setup Walkthrough",
-        "url": "https://www.youtube.com/watch?v=..."
-      }
-    ]
+    "tags": ["import", "tax", "warning"]
+  },
+  {
+    "id": "GL-001",
+    "title": "GL journal cannot be posted due to sequencing mismatch",
+    "module": "GL",
+    "root_cause": "Sequence assignment not aligned to ledger/period",
+    "pre_checks": [
+      "Check Sequencing assignment for Ledger/Journal Category",
+      "Verify period status and sequence range availability"
+    ],
+    "steps": [
+      "Adjust sequence assignment for affected category",
+      "Open period or extend sequence range",
+      "Revalidate and post the journal"
+    ],
+    "post_validation": ["Journal posts successfully", "Sequence applied in order"],
+    "tags": ["journal", "sequence"]
+  },
+  {
+    "id": "PAY-001",
+    "title": "Payment Process Request not generating format output",
+    "module": "Payments",
+    "root_cause": "Payment Process Profile (PPP) format mapping incomplete",
+    "pre_checks": [
+      "Verify PPP format mapping to external payee",
+      "Check template availability & BI Publisher permissions"
+    ],
+    "steps": [
+      "Update PPP with correct format and template",
+      "Grant BI Publisher template access",
+      "Rerun PPR format stage"
+    ],
+    "post_validation": ["Output generated in Transmission", "File delivered to payment system"],
+    "tags": ["PPR", "format", "PPP"]
   }
-
-  /* , ... add more objects here ... */
 ]
