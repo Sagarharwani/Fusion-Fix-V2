@@ -1,24 +1,29 @@
 {
   "name": "fusion-fix-v2",
   "private": true,
+  "type": "module",
+  "version": "1.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "recharts": "^2.7.2",
+    "framer-motion": "^11.3.31",
     "lucide-react": "^0.475.0",
-    "framer-motion": "^11.3.31"
+    "recharts": "^2.12.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "typescript": "^5.4.2",
-    "tailwindcss": "^3.4.10",
-    "postcss": "^8.4.41",
+    "@types/node": "^22.5.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
-    "vite": "^5.4.2",
-    "@vitejs/plugin-react": "^4.3.1"
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.10",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
   }
 }
