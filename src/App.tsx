@@ -15,11 +15,13 @@ type Solution = {
   title: string;
   module: string;
   severity?: string;
-  rca?: string;
-  steps?: string;
-  validation?: string;
+  rca?: string | string[];
+  prechecks?: string | string[];
+  steps?: string | string[];
+  validation?: string | string[];
   tags?: string[];
   lastUpdated?: string;
+  links?: { label: string; url: string }[];
 };
 
 type ModuleCount = { name: string; count: number };
@@ -89,7 +91,7 @@ export default function App() {
 
       if (!q) return true;
       const hay =
-        `${s.title} ${s.module} ${s.rca ?? ""} ${s.steps ?? ""} ${s.validation ?? ""} ${(s.tags ?? []).join(" ")}`.toLowerCase();
+        `${s.title} ${s.module} ${toText(s.rca)} ${toText(s.prechecks)} ${toText(s.steps)} ${toText(s.validation)} ${(s.tags ?? []).join(" ")}`.toLowerCase();
       return hay.includes(q);
     });
   }, [solutions, query, moduleFilter]);
@@ -105,7 +107,7 @@ export default function App() {
 
   const totalArticles = solutionsInView.length;
 
-  // Map to ArticleGrid shape
+  // Map to ArticleGrid shape (pass prechecks + links)
   const articles: Article[] = useMemo(
     () =>
       solutionsInView.map((s) => ({
@@ -113,11 +115,13 @@ export default function App() {
         module: s.module,
         title: s.title,
         rca: s.rca,
+        prechecks: s.prechecks,
         steps: s.steps,
         validation: s.validation,
         tags: s.tags,
         lastUpdated: s.lastUpdated,
         severity: s.severity,
+        links: s.links,
       })),
     [solutionsInView]
   );
@@ -174,15 +178,13 @@ export default function App() {
         </div>
       </header>
 
-      {/* Body: stats first, articles below */}
+      {/* Stats on top, Articles below (same as your current layout) */}
       <main className="mx-auto max-w-7xl px-4 py-6 space-y-5">
-        {/* Stats card */}
         <section className="rounded-xl bg-white ring-1 ring-gray-200">
           <div className="p-4 border-b">
             <h2 className="text-sm font-semibold">By Module</h2>
           </div>
 
-          {/* Two columns inside: Pie (left), Totals table (right) */}
           <div className="grid grid-cols-1 md:grid-cols-3">
             <div className="md:col-span-2 h-72 p-4">
               <ResponsiveContainer width="100%" height="100%">
@@ -217,14 +219,11 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Total row */}
                   <tr className="border-b">
                     <td className="py-2 font-medium">Total Articles</td>
                     <td className="py-2">{totalArticles}</td>
                     <td className="py-2">100%</td>
                   </tr>
-
-                  {/* Module-wise rows */}
                   {moduleCounts.map((m) => (
                     <tr key={m.name} className="border-b last:border-0">
                       <td className="py-2">{m.name}</td>
@@ -240,7 +239,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* Articles section BELOW the stats, full width */}
         <section className="rounded-xl bg-white ring-1 ring-gray-200">
           <div className="px-4 py-3 border-b">
             <h2 className="text-sm font-semibold">{totalArticles} Articles</h2>
@@ -252,4 +250,10 @@ export default function App() {
       </main>
     </div>
   );
+}
+
+/* ------ helpers ------ */
+function toText(v?: string | string[]) {
+  if (!v) return "";
+  return Array.isArray(v) ? v.join(" ") : v;
 }
