@@ -8,12 +8,25 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-/** ---------- Types ---------- */
+/** ---------- Types matching your solutions.json ---------- */
+type Link = {
+  label: string;
+  url: string;
+};
+
 type Solution = {
   id: string | number;
   title: string;
-  module: string; // e.g., "AP", "AR", "GL", "Payments", etc.
-  // other fields can exist; we only need module/title for this page
+  module: string;
+  severity?: string;
+
+  // New rich fields (optional but recommended)
+  root_cause?: string;
+  pre_checks?: string[];           // bullets
+  steps?: string[];                // ordered steps
+  post_validation?: string[];      // bullets
+  tags?: string[];                 // extra tags/keywords
+  links?: Link[];                  // oracle docs / MOS / YouTube etc.
 };
 
 /** ---------- Helpers ---------- */
@@ -30,13 +43,18 @@ const COLORS = [
 
 const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
 
-/** ---------- UI Chips / Small Components ---------- */
 const Box = ({ children }: { children: React.ReactNode }) => (
   <div className="rounded-xl border bg-white p-4 shadow-sm">{children}</div>
 );
 
+const Chip = ({ children }: { children: React.ReactNode }) => (
+  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+    {children}
+  </span>
+);
+
 const PageHeader = () => (
-  <div className="flex items-center justify-between mb-4">
+  <div className="mb-4 flex items-center justify-between">
     <h1 className="text-2xl font-bold">Fusion Finance Fixes</h1>
     <a
       className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm hover:bg-slate-50"
@@ -45,12 +63,7 @@ const PageHeader = () => (
       rel="noreferrer"
     >
       View Repo
-      <svg
-        className="h-4 w-4"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        aria-hidden="true"
-      >
+      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
         <path d="M12.293 2.293a1 1 0 011.414 0l4 4A1 1 0 0117 8h-3v6a1 1 0 11-2 0V8H9a1 1 0 110-2h3V3a1 1 0 01.293-.707z" />
         <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 112 0v3a4 4 0 01-4 4H5a4 4 0 01-4-4V7a4 4 0 014-4h3a1 1 0 110 2H5z" />
       </svg>
@@ -58,50 +71,108 @@ const PageHeader = () => (
   </div>
 );
 
+/** ---------- Modal ---------- */
+function Modal({
+  open,
+  onClose,
+  children,
+  title,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  title: string;
+}) {
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    if (open) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div
+      aria-modal="true"
+      role="dialog"
+      className="fixed inset-0 z-50 flex items-center justify-center"
+    >
+      {/* backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+        aria-hidden
+      />
+      {/* Panel */}
+      <div className="relative z-10 max-h-[85vh] w-[min(900px,95vw)] overflow-auto rounded-xl bg-white p-5 shadow-2xl">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /** ---------- Main App ---------- */
 export default function App() {
   const [solutions, setSolutions] = React.useState<Solution[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [query, setQuery] = React.useState("");
   const [moduleFilter, setModuleFilter] = React.useState<string>("All");
+  const [active, setActive] = React.useState<Solution | null>(null);
 
   React.useEffect(() => {
     (async () => {
       try {
-        // solutions.json should be in /public, so this path works in Vite/Vercel
         const res = await fetch("/solutions.json", { cache: "no-store" });
         const data = (await res.json()) as Solution[];
         setSolutions(data);
       } catch (e) {
         console.error("Failed to load solutions.json", e);
-        setSolutions([]); // safe fallback
+        setSolutions([]);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  // All modules (for dropdown)
+  // Distinct modules
   const modules = React.useMemo(() => {
     const set = new Set<string>();
     for (const s of solutions) if (s.module) set.add(s.module);
     return ["All", ...Array.from(set).sort()];
   }, [solutions]);
 
-  // Apply filters
+  // Filtering
   const filteredSolutions = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return solutions.filter((s) => {
       if (moduleFilter !== "All" && s.module !== moduleFilter) return false;
       if (!q) return true;
-      return (
-        (s.title || "").toLowerCase().includes(q) ||
-        (s.module || "").toLowerCase().includes(q)
-      );
+      const haystack = [
+        s.title,
+        s.module,
+        s.root_cause,
+        ...(s.tags ?? []),
+        ...(s.pre_checks ?? []),
+        ...(s.steps ?? []),
+        ...(s.post_validation ?? []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
     });
   }, [solutions, query, moduleFilter]);
 
-  // Build module counts
+  // Aggregations
   const byModuleMap = React.useMemo(() => {
     const map = new Map<string, number>();
     for (const s of filteredSolutions) {
@@ -111,30 +182,19 @@ export default function App() {
     return map;
   }, [filteredSolutions]);
 
-  const total = React.useMemo(
-    () => filteredSolutions.length,
-    [filteredSolutions]
-  );
+  const total = filteredSolutions.length;
 
   const chartData = React.useMemo(
-    () =>
-      Array.from(byModuleMap.entries()).map(([name, count]) => ({
-        name,
-        count,
-      })),
+    () => Array.from(byModuleMap, ([name, count]) => ({ name, count })),
     [byModuleMap]
   );
 
-  // For the table: sort modules by count desc
   const tableRows = React.useMemo(
     () =>
       chartData
         .slice()
         .sort((a, b) => b.count - a.count)
-        .map((row) => ({
-          ...row,
-          percent: total ? row.count / total : 0,
-        })),
+        .map((r) => ({ ...r, percent: total ? r.count / total : 0 })),
     [chartData, total]
   );
 
@@ -148,7 +208,7 @@ export default function App() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search title, root cause, module..."
+          placeholder="Search title, root cause, module, tags..."
           className="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring"
         />
         <select
@@ -177,9 +237,9 @@ export default function App() {
 
       {/* Chart + Table */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Pie Chart */}
+        {/* Pie */}
         <Box>
-          <h3 className="font-semibold mb-2">By Module</h3>
+          <h3 className="mb-2 font-semibold">By Module</h3>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -199,25 +259,24 @@ export default function App() {
                 >
                   {chartData.map((entry, idx) => (
                     <Cell
-                      key={`cell-${entry.name}`}
+                      key={entry.name}
                       fill={COLORS[idx % COLORS.length]}
                     />
                   ))}
                 </Pie>
-
                 <Tooltip
-                  formatter={(value: any, _n, { payload }) => {
-                    const v = Number(value);
-                    const p = total ? v / total : 0;
-                    return [`${v} • ${pct(p)}`, payload?.name];
+                  formatter={(v: any, _n, { payload }) => {
+                    const count = Number(v);
+                    const p = total ? count / total : 0;
+                    return [`${count} • ${pct(p)}`, payload?.name];
                   }}
                 />
                 <Legend
                   verticalAlign="bottom"
                   formatter={(value: string, entry: any) => {
-                    const count = entry?.payload?.count ?? 0;
-                    const p = total ? count / total : 0;
-                    return `${value} — ${pct(p)} (${count})`;
+                    const c = entry?.payload?.count ?? 0;
+                    const p = total ? c / total : 0;
+                    return `${value} — ${pct(p)} (${c})`;
                   }}
                 />
               </PieChart>
@@ -225,15 +284,13 @@ export default function App() {
           </div>
         </Box>
 
-        {/* Stats Table */}
+        {/* Table */}
         <Box>
-          <h3 className="font-semibold mb-2">Module-wise Totals</h3>
-
+          <h3 className="mb-2 font-semibold">Module-wise Totals</h3>
           <div className="mb-2 text-sm text-slate-600">
             Total Articles:{" "}
             <span className="font-semibold text-slate-900">{total}</span>
           </div>
-
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -274,20 +331,103 @@ export default function App() {
         </Box>
       </div>
 
-      {/* (Optional) simple list of titles underneath */}
+      {/* Articles list */}
       <Box>
-        <h3 className="font-semibold mb-2">{total} Articles</h3>
-        <ul className="space-y-1">
+        <h3 className="mb-2 font-semibold">{total} Articles</h3>
+        <ul className="divide-y">
           {filteredSolutions.map((s) => (
-            <li key={s.id} className="flex gap-2">
-              <span className="inline-flex min-w-[64px] justify-center rounded-md bg-slate-100 px-2 text-xs font-medium text-slate-700">
-                {s.module}
-              </span>
-              <span className="text-slate-800">{s.title}</span>
+            <li key={s.id} className="py-2">
+              <button
+                onClick={() => setActive(s)}
+                className="flex w-full items-start gap-3 text-left hover:bg-slate-50 rounded-lg px-2 py-1"
+                title="Open details"
+              >
+                <Chip>{s.module}</Chip>
+                <span className="text-slate-800">{s.title}</span>
+              </button>
             </li>
           ))}
         </ul>
       </Box>
+
+      {/* Details Modal */}
+      <Modal
+        open={!!active}
+        onClose={() => setActive(null)}
+        title={active?.title ?? ""}
+      >
+        {!!active && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Chip>Module: {active.module}</Chip>
+              {active.severity && <Chip>Severity: {active.severity}</Chip>}
+              {active.tags?.slice(0, 6).map((t) => <Chip key={t}>{t}</Chip>)}
+            </div>
+
+            {active.root_cause && (
+              <section>
+                <h4 className="mb-1 font-semibold">Root Cause</h4>
+                <p className="text-slate-700">{active.root_cause}</p>
+              </section>
+            )}
+
+            {active.pre_checks?.length ? (
+              <section>
+                <h4 className="mb-1 font-semibold">Pre-Checks</h4>
+                <ul className="list-disc pl-5 text-slate-700">
+                  {active.pre_checks.map((x, i) => (
+                    <li key={i}>{x}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {active.steps?.length ? (
+              <section>
+                <h4 className="mb-1 font-semibold">Resolution Steps</h4>
+                <ol className="list-decimal pl-5 text-slate-700">
+                  {active.steps.map((x, i) => (
+                    <li key={i} className="mb-0.5">
+                      {x}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ) : null}
+
+            {active.post_validation?.length ? (
+              <section>
+                <h4 className="mb-1 font-semibold">Post-Validation</h4>
+                <ul className="list-disc pl-5 text-slate-700">
+                  {active.post_validation.map((x, i) => (
+                    <li key={i}>{x}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {active.links?.length ? (
+              <section>
+                <h4 className="mb-1 font-semibold">References</h4>
+                <ul className="list-disc pl-5">
+                  {active.links.map((l, i) => (
+                    <li key={i}>
+                      <a
+                        href={l.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-indigo-600 hover:underline"
+                      >
+                        {l.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
