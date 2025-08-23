@@ -137,4 +137,119 @@ export default function App() {
           {/* Search */}
           <input
             type="text"
-            p
+            placeholder="Search title, root cause, module, tags…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-[360px] rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+          />
+
+          {/* Module filter */}
+          <select
+            value={moduleFilter}
+            onChange={(e) => setModuleFilter(e.target.value)}
+            className="ml-2 rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+          >
+            {modules.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+
+          {/* Chips */}
+          <div className="ml-2 flex items-center gap-2">
+            <span className="inline-flex items-center rounded-lg bg-gray-100 px-2.5 py-1 text-xs">
+              Total Articles
+              <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white px-1 ring-1 ring-gray-200">
+                {totalArticles}
+              </span>
+            </span>
+            <span className="inline-flex items-center rounded-lg bg-gray-100 px-2.5 py-1 text-xs">
+              Modules in View
+              <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white px-1 ring-1 ring-gray-200">
+                {moduleCounts.length}
+              </span>
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* Body: stats first, articles below */}
+      <main className="mx-auto max-w-7xl px-4 py-6 space-y-5">
+        {/* Stats card */}
+        <section className="rounded-xl bg-white ring-1 ring-gray-200">
+          <div className="p-4 border-b">
+            <h2 className="text-sm font-semibold">By Module</h2>
+          </div>
+
+          {/* Two columns inside: Pie (left), Totals table (right) */}
+          <div className="grid grid-cols-1 md:grid-cols-3">
+            <div className="md:col-span-2 h-72 p-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={moduleCounts.map((d) => ({ name: d.name, value: d.count }))}
+                    dataKey="value"
+                    innerRadius={60}
+                    outerRadius={85}
+                    paddingAngle={3}
+                    label={renderPieLabel}
+                    labelLine={false}
+                  >
+                    {moduleCounts.map((_, index) => (
+                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="p-4">
+              <h3 className="text-xs text-gray-500 mb-2">Totals</h3>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b">
+                    <th className="py-1.5 font-medium">Item</th>
+                    <th className="py-1.5 font-medium">Count</th>
+                    <th className="py-1.5 font-medium">% of Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Total row */}
+                  <tr className="border-b">
+                    <td className="py-2 font-medium">Total Articles</td>
+                    <td className="py-2">{totalArticles}</td>
+                    <td className="py-2">100%</td>
+                  </tr>
+
+                  {/* Module-wise rows */}
+                  {moduleCounts.map((m) => (
+                    <tr key={m.name} className="border-b last:border-0">
+                      <td className="py-2">{m.name}</td>
+                      <td className="py-2">{m.count}</td>
+                      <td className="py-2">
+                        {totalArticles ? Math.round((m.count / totalArticles) * 100) : 0}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        {/* Articles section BELOW the stats, full width */}
+        <section className="rounded-xl bg-white ring-1 ring-gray-200">
+          <div className="px-4 py-3 border-b">
+            <h2 className="text-sm font-semibold">{totalArticles} Articles</h2>
+          </div>
+          <div className="p-4">
+            <ArticleGrid articles={articles} />
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
