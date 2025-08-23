@@ -1,20 +1,14 @@
 [
   {
     "id": "1",
-    "title": "AP invoice import error with tax calculation disabled",
+    "title": "Clear, specific issue title",
     "module": "AP",
-    "severity": "Medium"
-  },
-  {
-    "id": "2",
-    "title": "GL journal cannot be posted due to sequencing mismatch",
-    "module": "GL",
-    "severity": "High"
-  },
-  {
-    "id": "3",
-    "title": "Payment process request not generating format output",
-    "module": "Payments",
-    "severity": "High"
+    "severity": "High",
+    "rootCause": "What causes it",
+    "preChecks": ["Check A", "Check B"],
+    "steps": ["Do X", "Then Y", "Validate Z"],
+    "validation": ["Expected result A", "Report B shows …"],
+    "oracleDocs": ["https://docs.oracle.com/..."],
+    "videos": ["https://www.youtube.com/watch?v=..."]
   }
 ]
