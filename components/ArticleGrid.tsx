@@ -1,7 +1,6 @@
-// components/ArticleGrid.tsx
 import React, { useEffect, useRef, useState } from "react";
 
-type Article = {
+export type Article = {
   id: string;
   module: string;        // e.g., "AP", "GL", "Payments"
   title: string;
@@ -11,9 +10,7 @@ type Article = {
   tags?: string[];
 };
 
-type Props = {
-  articles: Article[];
-};
+type Props = { articles: Article[] };
 
 export default function ArticleGrid({ articles }: Props) {
   const [open, setOpen] = useState(false);
@@ -28,7 +25,6 @@ export default function ArticleGrid({ articles }: Props) {
     setActive(null);
   };
 
-  // close on ESC
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeModal();
     document.addEventListener("keydown", onKey);
@@ -37,8 +33,7 @@ export default function ArticleGrid({ articles }: Props) {
 
   return (
     <>
-      {/* Grid of square preview cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {articles.map((a) => (
           <button
             key={a.id}
@@ -64,7 +59,6 @@ export default function ArticleGrid({ articles }: Props) {
               ) : null}
             </div>
 
-            {/* Keep the card square */}
             <div className="px-4 pb-4">
               <div className="aspect-square rounded-xl border border-gray-100 p-4 bg-gradient-to-b from-white to-gray-50">
                 <h3 className="text-sm font-semibold leading-snug line-clamp-2 mb-2">
@@ -84,7 +78,6 @@ export default function ArticleGrid({ articles }: Props) {
         ))}
       </div>
 
-      {/* Centered Modal */}
       {open && active ? (
         <Modal onClose={closeModal} title={active.title}>
           <div className="space-y-4">
@@ -99,14 +92,11 @@ export default function ArticleGrid({ articles }: Props) {
   );
 }
 
-/* ---------- Small subcomponents ---------- */
-
 function InfoRow({ label, value }: { label: string; value?: string }) {
   if (!value) return null;
   return (
     <div className="mb-2">
       <div className="text-[11px] font-medium text-gray-500">{label}</div>
-      {/* show a couple of lines in the card */}
       <p className="text-xs text-gray-700 leading-relaxed line-clamp-2">
         {value}
       </p>
@@ -155,7 +145,6 @@ function Modal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
-  // simple focus trap to the dialog
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
     ref.current?.focus();
@@ -187,9 +176,3 @@ function Modal({
           >
             ✕
           </button>
-        </div>
-        <div className="mt-3">{children}</div>
-      </div>
-    </div>
-  );
-}
