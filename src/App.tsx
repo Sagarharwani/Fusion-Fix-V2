@@ -1,4 +1,30 @@
-// Recharts: custom label (module name + % inside each slice)
+import React, { useEffect, useMemo, useState } from "react";
+import ArticleGrid, { type Article } from "./components/ArticleGrid";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+/** ---------- Types matching your solutions.json ---------- */
+type Solution = {
+  id: string | number;
+  title: string;
+  module: string;
+  severity?: string;
+  rca?: string;
+  steps?: string;
+  validation?: string;
+  tags?: string[];
+  lastUpdated?: string;
+};
+
+type ModuleCount = { name: string; count: number };
+
+/** -------- Recharts custom label (module + %) -------- */
 const RADIAN = Math.PI / 180;
 const renderPieLabel = ({
   cx,
@@ -12,7 +38,7 @@ const renderPieLabel = ({
   const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
-  const pct = Math.round(percent * 100);
+  const pct = Math.round((percent || 0) * 100);
 
   return (
     <text
@@ -24,7 +50,57 @@ const renderPieLabel = ({
       fill="#111827"
       style={{ paintOrder: "stroke", stroke: "white", strokeWidth: 3 }}
     >
-      {payload.name} {pct}%
+      {payload?.name} {pct}%
     </text>
   );
 };
+
+/** ----------------------- App --------------------------- */
+export default function App() {
+  const [solutions, setSolutions] = useState<Solution[]>([]);
+  const [query, setQuery] = useState("");
+  const [moduleFilter, setModuleFilter] = useState<string>("All");
+
+  // Load from /public/solutions.json
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/solutions.json");
+        const data: Solution[] = await res.json();
+        setSolutions(data);
+      } catch (e) {
+        console.error("Failed to load solutions.json", e);
+      }
+    })();
+  }, []);
+
+  // Distinct modules (for filter dropdown)
+  const modules = useMemo(() => {
+    const set = new Set(solutions.map((s) => s.module).filter(Boolean));
+    return ["All", ...Array.from(set)];
+  }, [solutions]);
+
+  // Search + filter
+  const solutionsInView = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return solutions.filter((s) => {
+      const moduleOk = moduleFilter === "All" || s.module === moduleFilter;
+      if (!moduleOk) return false;
+
+      if (!q) return true;
+      const hay =
+        `${s.title} ${s.module} ${s.rca ?? ""} ${s.steps ?? ""} ${s.validation ?? ""} ${(s.tags ?? []).join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [solutions, query, moduleFilter]);
+
+  // Module totals for donut + side table
+  const moduleCounts: ModuleCount[] = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of solutionsInView) {
+      map.set(s.module, (map.get(s.module) || 0) + 1);
+    }
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+  }, [solutionsInView]);
+
+  const totalArticles = solutionsInView.len
