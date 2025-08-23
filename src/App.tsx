@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import ArticleGrid, { Article } from "@/components/ArticleGrid";
+import ArticleGrid from "./components/ArticleGrid";
 import {
   PieChart,
   Pie,
