@@ -62,6 +62,7 @@ export default function App() {
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string>("All");
+  const [groupByModule, setGroupByModule] = useState<boolean>(true); // NEW
 
   // Load from /public/solutions.json
   useEffect(() => {
@@ -79,7 +80,7 @@ export default function App() {
   // Distinct modules (for filter dropdown)
   const modules = useMemo(() => {
     const set = new Set(solutions.map((s) => s.module).filter(Boolean));
-    return ["All", ...Array.from(set)];
+    return ["All", ...Array.from(set).sort()];
   }, [solutions]);
 
   // Search + filter
@@ -102,13 +103,15 @@ export default function App() {
     for (const s of solutionsInView) {
       map.set(s.module, (map.get(s.module) || 0) + 1);
     }
-    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [solutionsInView]);
 
   const totalArticles = solutionsInView.length;
 
-  // Map to ArticleGrid shape (pass prechecks + links)
-  const articles: Article[] = useMemo(
+  // Map to ArticleGrid shape
+  const flatArticles: Article[] = useMemo(
     () =>
       solutionsInView.map((s) => ({
         id: String(s.id),
@@ -125,6 +128,18 @@ export default function App() {
       })),
     [solutionsInView]
   );
+
+  // Grouped articles by module (respects filter + search)
+  const groupedArticles = useMemo(() => {
+    const map = new Map<string, Article[]>();
+    for (const a of flatArticles) {
+      if (!map.has(a.module)) map.set(a.module, []);
+      map.get(a.module)!.push(a);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0])) // alphabetical module order
+      .map(([module, items]) => ({ module, items }));
+  }, [flatArticles]);
 
   // Colors for donut
   const COLORS = ["#6366F1", "#22C55E", "#F59E0B", "#EF4444", "#06B6D4"];
@@ -160,8 +175,19 @@ export default function App() {
             ))}
           </select>
 
+          {/* Group toggle */}
+          <label className="ml-3 inline-flex items-center gap-2 text-sm select-none cursor-pointer">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={groupByModule}
+              onChange={(e) => setGroupByModule(e.target.checked)}
+            />
+            Group by module
+          </label>
+
           {/* Chips */}
-          <div className="ml-2 flex items-center gap-2">
+          <div className="ml-3 flex items-center gap-2">
             <span className="inline-flex items-center rounded-lg bg-gray-100 px-2.5 py-1 text-xs">
               Total Articles
               <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white px-1 ring-1 ring-gray-200">
@@ -178,8 +204,9 @@ export default function App() {
         </div>
       </header>
 
-      {/* Stats on top, Articles below (same as your current layout) */}
+      {/* Stats on top, Articles below */}
       <main className="mx-auto max-w-7xl px-4 py-6 space-y-5">
+        {/* Stats card */}
         <section className="rounded-xl bg-white ring-1 ring-gray-200">
           <div className="p-4 border-b">
             <h2 className="text-sm font-semibold">By Module</h2>
@@ -239,14 +266,38 @@ export default function App() {
           </div>
         </section>
 
-        <section className="rounded-xl bg-white ring-1 ring-gray-200">
-          <div className="px-4 py-3 border-b">
-            <h2 className="text-sm font-semibold">{totalArticles} Articles</h2>
+        {/* Articles below the stats */}
+        {groupByModule ? (
+          // GROUPED BY MODULE
+          <div className="space-y-5">
+            {groupedArticles.map(({ module, items }) => (
+              <section key={module} className="rounded-xl bg-white ring-1 ring-gray-200">
+                <div className="px-4 py-3 border-b flex items-center gap-3">
+                  <h2 className="text-sm font-semibold">{module}</h2>
+                  <span className="text-xs text-gray-500">({items.length})</span>
+                </div>
+                <div className="p-4">
+                  <ArticleGrid articles={items} />
+                </div>
+              </section>
+            ))}
+            {groupedArticles.length === 0 && (
+              <div className="rounded-xl bg-white ring-1 ring-gray-200 p-6 text-sm text-gray-500">
+                No articles found.
+              </div>
+            )}
           </div>
-          <div className="p-4">
-            <ArticleGrid articles={articles} />
-          </div>
-        </section>
+        ) : (
+          // FLAT LIST (like before)
+          <section className="rounded-xl bg-white ring-1 ring-gray-200">
+            <div className="px-4 py-3 border-b">
+              <h2 className="text-sm font-semibold">{totalArticles} Articles</h2>
+            </div>
+            <div className="p-4">
+              <ArticleGrid articles={flatArticles} />
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
