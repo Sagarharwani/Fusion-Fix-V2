@@ -1,261 +1,39 @@
 [
   {
-    "id": "1",
+    "id": "AP-001",
     "title": "AP invoice import error: taxes not derived",
     "module": "AP",
-    "severity": "Medium",
-    "rootCause": "Supplier site tax options misconfigured; Term Date Basis not aligned with requirement.",
-    "preChecks": ["Verify Supplier Site → Invoicing tax options", "Check Tax Regime subscription & party tax profiles"],
-    "steps": [
-      "Update Supplier Site Invoicing options (Term Date Basis/Payment Terms).",
-      "Fix Supplier/Party Tax Profile classification codes.",
-      "Re-import invoice or test with a new invoice."
+    "severity": "High",
+    "tags": ["Tax", "Import", "Supplier Site"],
+    "root_cause": "Supplier Site tax options misconfigured; Term Date Basis not aligned with requirement.",
+    "pre_checks": [
+      "Verify Supplier Site ➜ Invoicing: Term Date Basis & Payment Terms",
+      "Check Tax Regime subscription and party tax profiles"
     ],
-    "validation": ["Invoice validates without warnings", "Tax lines generated as expected"],
-    "oracleDocs": ["https://docs.oracle.com"],
-    "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]
-  },
-  {
-    "id": "2",
-    "title": "GL journal cannot be posted due to sequencing mismatch",
-    "module": "GL",
-    "severity": "High",
-    "rootCause": "Ledger/seq assignment not aligned to ledger calendar period.",
-    "preChecks": ["Review Ledger → Sequencing", "Check period status"],
-    "steps": ["Update sequencing assignment", "Revalidate journal", "Post journal"],
-    "validation": ["Journal posted successfully"]
-  },
-  {
-    "id": "3",
-    "title": "Payment Process Request not generating format output",
-    "module": "Payments",
-    "severity": "High",
-    "rootCause": "Payment format mapping or transmission configuration missing.",
-    "preChecks": ["Check PPP → Formats", "Confirm transmission profile", "Confirm payment file repository access"],
     "steps": [
-      "Assign correct payment format at Payment Process Profile.",
-      "Recreate the PPR and submit."
+      "Update Supplier Site Invoicing options to correct Term Date Basis.",
+      "Ensure Supplier/Party Tax Profile has correct tax classification codes.",
+      "Re-import the invoice or create a new test invoice to validate."
     ],
-    "validation": ["Payment file generated and transmitted successfully"]
-  },
-  {
-    "id": "4",
-    "title": "AR AutoCash rules not applying during receipt application",
-    "module": "AR",
-    "severity": "Medium",
-    "rootCause": "AutoCash rule set not attached to customer profile or rule priority incorrect.",
-    "preChecks": ["Customer → Profile: AutoCash Rule Set", "Review rule priorities"],
-    "steps": ["Attach correct AutoCash Rule Set", "Retry auto-apply"],
-    "validation": ["Receipts applied per rule outcome"]
-  },
-  {
-    "id": "5",
-    "title": "AP invoice approval not triggered",
-    "module": "Approvals",
-    "severity": "High",
-    "rootCause": "BPM task configuration inactive or rule condition mismatch.",
-    "preChecks": ["BPM Worklist: task active?", "Rule logs show evaluation?"],
-    "steps": ["Activate task version", "Amend rules for correct conditions", "Resubmit invoice"],
-    "validation": ["Approval task created"]
-  },
-  {
-    "id": "6",
-    "title": "GL account combination invalidated by segment value security",
-    "module": "GL",
-    "severity": "Medium",
-    "rootCause": "Segment value security rule newly applied.",
-    "preChecks": ["Check Role → Data Access", "Segment security rules"],
-    "steps": ["Grant required segment access", "Re-create journal line"],
-    "validation": ["Combination passes validation"]
-  },
-  {
-    "id": "7",
-    "title": "Payment file rejected by bank due to date format",
-    "module": "Payments",
-    "severity": "High",
-    "rootCause": "Bank requires yyyyMMdd; format template outputs dd/MM/yyyy.",
-    "preChecks": ["Inspect payment XML/flat file", "Confirm bank spec"],
-    "steps": ["Adjust XDO/format date mask", "Regenerate payment"],
-    "validation": ["Bank accepts file"]
-  },
-  {
-    "id": "8",
-    "title": "AR Credit Memo approval stuck in Assigned state",
-    "module": "Approvals",
-    "severity": "Medium",
-    "rootCause": "Approver vacation rule without delegate.",
-    "preChecks": ["Worklist → Vacation rules", "User delegation"],
-    "steps": ["Assign delegate/disable vacation rule", "Reassign task"],
-    "validation": ["Task progresses to Approved/Rejected"]
-  },
-  {
-    "id": "9",
-    "title": "AP Withholding Tax not calculated",
-    "module": "Tax",
-    "severity": "High",
-    "rootCause": "Supplier/site WHT classification missing.",
-    "preChecks": ["Supplier tax profile", "Tax regime subscription"],
-    "steps": ["Add WHT classification", "Recreate invoice"],
-    "validation": ["WHT lines created"]
-  },
-  {
-    "id": "10",
-    "title": "GL posting fails: period closed",
-    "module": "GL",
-    "severity": "Low",
-    "rootCause": "Target period status is Closed.",
-    "preChecks": ["General Accounting → Manage Accounting Periods"],
-    "steps": ["Open period or change journal date"],
-    "validation": ["Journal posted"]
-  },
-  {
-    "id": "11",
-    "title": "AR Transaction source missing during AutoInvoice",
-    "module": "AR",
-    "severity": "High",
-    "rootCause": "Transaction Source not defined/mapped.",
-    "preChecks": ["AutoInvoice Import Mappings", "Transaction Source setup"],
-    "steps": ["Create/assign Transaction Source", "Re-run AutoInvoice"],
-    "validation": ["Invoices created without error"]
-  },
-  {
-    "id": "12",
-    "title": "Payment Process Profile not available at PPR",
-    "module": "Payments",
-    "severity": "Medium",
-    "rootCause": "PPP not assigned to Business Unit or payment method.",
-    "preChecks": ["PPP assignment to BU", "Payment Methods setup"],
-    "steps": ["Assign PPP to BU/method", "Retry PPR"],
-    "validation": ["PPP selectable at PPR"]
-  },
-  {
-    "id": "13",
-    "title": "Cash Management reconciliation rules not matching",
-    "module": "GL",
-    "severity": "Medium",
-    "rootCause": "Rule thresholds wrong; bank statement date offsets.",
-    "preChecks": ["Reconciliation rule definitions", "Bank statement fields"],
-    "steps": ["Tune rules/thresholds", "Re-run auto reconcile"],
-    "validation": ["Higher auto-match rate"]
-  },
-  {
-    "id": "14",
-    "title": "SLA: Journal approvals not respecting amount threshold",
-    "module": "SLA",
-    "severity": "High",
-    "rootCause": "Approval rule uses currency-agnostic amount without conversion.",
-    "preChecks": ["Rule definition", "Currency conversion setups"],
-    "steps": ["Convert to functional currency before compare", "Republish rules"],
-    "validation": ["Threshold works as expected"]
-  },
-  {
-    "id": "15",
-    "title": "AP Invoice image not visible in Infolets",
-    "module": "AP",
-    "severity": "Low",
-    "rootCause": "Attachment category not included in infolet query.",
-    "preChecks": ["Attachment category", "UIC query filters"],
-    "steps": ["Add category to query", "Refresh infolets"],
-    "validation": ["Image renders"]
-  },
-  {
-    "id": "16",
-    "title": "AR Lockbox rejects receipts with MICR missing",
-    "module": "AR",
-    "severity": "Medium",
-    "rootCause": "Bank file missing MICR; mapping expecting mandatory field.",
-    "preChecks": ["Lockbox mapping", "Sample file fields"],
-    "steps": ["Make MICR optional or enrich mapping", "Re-import"],
-    "validation": ["Receipts imported"]
-  },
-  {
-    "id": "17",
-    "title": "Tax: Rounding difference posted to suspense",
-    "module": "Tax",
-    "severity": "Low",
-    "rootCause": "Tax precision/rounding config mismatch.",
-    "preChecks": ["Tax regime precision", "Ledger precision"],
-    "steps": ["Align precision/rounding", "Recalculate"],
-    "validation": ["No suspense postings"]
-  },
-  {
-    "id": "18",
-    "title": "Approvals: BPM task not created for Payment Cancellation",
-    "module": "Approvals",
-    "severity": "Medium",
-    "rootCause": "Payment cancellation task disabled.",
-    "preChecks": ["BPM task list", "Task version active?"],
-    "steps": ["Enable task", "Republish and retry"],
-    "validation": ["Task created on cancellation"]
-  },
-  {
-    "id": "19",
-    "title": "GL Balance cube not refreshed after segment change",
-    "module": "GL",
-    "severity": "Medium",
-    "rootCause": "Cube not recompiled after hierarchy update.",
-    "preChecks": ["Hierarchy publish status", "Last cube refresh"],
-    "steps": ["Run cube refresh", "Reopen balances"],
-    "validation": ["Balances reflect new hierarchy"]
-  },
-  {
-    "id": "20",
-    "title": "AP: Invoice lines missing distribution combination",
-    "module": "AP",
-    "severity": "High",
-    "rootCause": "Default distribution not set at supplier/site.",
-    "preChecks": ["Supplier site defaults", "Distribution sets"],
-    "steps": ["Define distribution set/default", "Recreate invoice"],
-    "validation": ["Lines default combination"]
-  },
-  {
-    "id": "21",
-    "title": "AR: Revenue recognition schedule not generated",
-    "module": "AR",
-    "severity": "Medium",
-    "rootCause": "Invoicing rule/RevRec rule not attached.",
-    "preChecks": ["Invoicing rules", "RevRec template"],
-    "steps": ["Attach rules", "Regenerate schedules"],
-    "validation": ["Schedules created"]
-  },
-  {
-    "id": "22",
-    "title": "Payments: Supplier banking validation fails (IBAN)",
-    "module": "Payments",
-    "severity": "High",
-    "rootCause": "IBAN validation routine country config outdated.",
-    "preChecks": ["Country IBAN pattern", "Recent bank guideline"],
-    "steps": ["Update validation pattern", "Revalidate supplier bank"],
-    "validation": ["Banking details accepted"]
-  },
-  {
-    "id": "23",
-    "title": "SLA: Subledger accounting entries out of balance",
-    "module": "SLA",
-    "severity": "High",
-    "rootCause": "Journal line rule source expression returns null.",
-    "preChecks": ["XLA rules preview", "Source values in event"],
-    "steps": ["Fix expression", "Republish", "Recreate accounting"],
-    "validation": ["Balanced entries generated"]
-  },
-  {
-    "id": "24",
-    "title": "Approvals: Parallel approver not notified",
-    "module": "Approvals",
-    "severity": "Medium",
-    "rootCause": "Notification preference disabled for user.",
-    "preChecks": ["User preferences", "Email channel status"],
-    "steps": ["Enable notifications", "Resend task"],
-    "validation": ["Approver receives email/worklist item"]
-  },
-  {
-    "id": "25",
-    "title": "AP: Dunning / Late charges not calculated",
-    "module": "AP",
-    "severity": "Medium",
-    "rootCause": "Late charge policy not enabled for supplier/site.",
-    "preChecks": ["Supplier payment terms", "Late charge policy"],
-    "steps": ["Enable policy; configure threshold/percentage", "Recalculate charges"],
-    "validation": ["Late charges appear on invoice/payment"]
+    "post_validation": [
+      "Invoice validates without warning; tax lines generated in the distribution.",
+      "Tax summary shows expected regime/rate; accounting includes tax lines."
+    ],
+    "links": [
+      {
+        "label": "Oracle Doc: Configure Payables Tax",
+        "url": "https://docs.oracle.com/..."
+      },
+      {
+        "label": "MOS Note 2971583.1",
+        "url": "https://support.oracle.com/epmos/faces/DocumentDisplay?id=2971583.1"
+      },
+      {
+        "label": "YouTube: Payables Tax Setup Walkthrough",
+        "url": "https://www.youtube.com/watch?v=..."
+      }
+    ]
   }
+
+  /* , ... add more objects here ... */
 ]
