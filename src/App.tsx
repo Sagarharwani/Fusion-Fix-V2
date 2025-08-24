@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ArticleGrid, { type Article } from "./components/ArticleGrid";
 import {
-  PieChart,
-  Pie,
-  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
   Tooltip,
-  Legend,
   ResponsiveContainer,
+  CartesianGrid,
+  Legend,
 } from "recharts";
 
-/** ---------- Types matching your solutions.json ---------- */
 type Solution = {
   id: string | number;
   title: string;
@@ -26,83 +27,11 @@ type Solution = {
 
 type ModuleCount = { name: string; count: number };
 
-/** -------- Recharts custom label (module + %) -------- */
-const RADIAN = Math.PI / 180;
-const renderPieLabel = ({
-  cx,
-  cy,
-  midAngle,
-  innerRadius,
-  outerRadius,
-  percent,
-  payload,
-}: any) => {
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
-  const pct = Math.round((percent || 0) * 100);
-
-  return (
-    <text
-      x={x}
-      y={y}
-      fontSize={12}
-      textAnchor="middle"
-      dominantBaseline="central"
-      fill="#111827"
-      style={{ paintOrder: "stroke", stroke: "white", strokeWidth: 3 }}
-    >
-      {payload?.name} {pct}%
-    </text>
-  );
-};
-
-/** ---------- Search helpers (wildcards % and _) ---------- */
-
-// Normalize text for searching
-function normalize(s: string) {
-  return (s || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, ""); // strip accents
-}
-
-// Convert a SQL-like pattern (with % and _) into a JS regex
-function sqlLikeToRegex(pattern: string): RegExp {
-  // Escape all regex specials first
-  const esc = pattern.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
-  // Then translate SQL wildcards
-  const withWildcards = esc.replace(/%/g, ".*").replace(/_/g, ".");
-  return new RegExp(withWildcards, "i");
-}
-
-// Match function: if pattern has % or _, use wildcard; else plain substring
-function matchesQuery(haystack: string, q: string): boolean {
-  const h = normalize(haystack);
-  const query = q.trim();
-  if (!query) return true;
-
-  if (/[%_]/.test(query)) {
-    const re = sqlLikeToRegex(normalize(query));
-    return re.test(h);
-  }
-  return h.includes(normalize(query));
-}
-
-// Convert possibly-array fields to text for search haystack
-function toText(v?: string | string[]) {
-  if (!v) return "";
-  return Array.isArray(v) ? v.join(" ") : v;
-}
-
-/** ----------------------- App --------------------------- */
 export default function App() {
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string>("All");
-  const [groupByModule, setGroupByModule] = useState<boolean>(true);
 
-  // Load from /public/solutions.json
   useEffect(() => {
     (async () => {
       try {
@@ -115,28 +44,23 @@ export default function App() {
     })();
   }, []);
 
-  // Distinct modules (for filter dropdown)
   const modules = useMemo(() => {
     const set = new Set(solutions.map((s) => s.module).filter(Boolean));
     return ["All", ...Array.from(set).sort()];
   }, [solutions]);
 
-  // Search + filter (supports % and _ wildcards)
   const solutionsInView = useMemo(() => {
-    const q = query; // keep original; matching handles case/accents
-
+    const q = query.trim().toLowerCase();
     return solutions.filter((s) => {
       const moduleOk = moduleFilter === "All" || s.module === moduleFilter;
       if (!moduleOk) return false;
-
+      if (!q) return true;
       const hay =
-        `${s.title} ${s.module} ${toText(s.rca)} ${toText(s.prechecks)} ${toText(s.steps)} ${toText(s.validation)} ${(s.tags ?? []).join(" ")}`;
-
-      return matchesQuery(hay, q);
+        `${s.title} ${s.module} ${s.rca} ${s.prechecks} ${s.steps} ${s.validation} ${(s.tags ?? []).join(" ")}`.toLowerCase();
+      return hay.includes(q);
     });
   }, [solutions, query, moduleFilter]);
 
-  // Module totals for donut + side table
   const moduleCounts: ModuleCount[] = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of solutionsInView) {
@@ -144,12 +68,11 @@ export default function App() {
     }
     return Array.from(map.entries())
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => b.count - a.count);
   }, [solutionsInView]);
 
   const totalArticles = solutionsInView.length;
 
-  // Map to ArticleGrid shape
   const flatArticles: Article[] = useMemo(
     () =>
       solutionsInView.map((s) => ({
@@ -168,40 +91,20 @@ export default function App() {
     [solutionsInView]
   );
 
-  // Grouped articles by module (respects filter + search)
-  const groupedArticles = useMemo(() => {
-    const map = new Map<string, Article[]>();
-    for (const a of flatArticles) {
-      if (!map.has(a.module)) map.set(a.module, []);
-      map.get(a.module)!.push(a);
-    }
-    return Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0])) // alphabetical module order
-      .map(([module, items]) => ({ module, items }));
-  }, [flatArticles]);
-
-  // Colors for donut
-  const COLORS = ["#6366F1", "#22C55E", "#F59E0B", "#EF4444", "#06B6D4"];
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top bar */}
+      {/* Header */}
       <header className="sticky top-0 z-10 bg-white border-b">
         <div className="mx-auto max-w-7xl px-4 py-3 flex items-center gap-3">
           <h1 className="text-xl font-semibold">Fusion Finance Fixes</h1>
-
           <div className="flex-1" />
-
-          {/* Search (supports % and _) */}
           <input
             type="text"
-            placeholder="Search (supports % and _ wildcards)…  e.g.,  %invoi%error%"
+            placeholder="Search title, root cause, module, tags…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-[360px] rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
           />
-
-          {/* Module filter */}
           <select
             value={moduleFilter}
             onChange={(e) => setModuleFilter(e.target.value)}
@@ -213,130 +116,76 @@ export default function App() {
               </option>
             ))}
           </select>
-
-          {/* Group toggle */}
-          <label className="ml-3 inline-flex items-center gap-2 text-sm select-none cursor-pointer">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={groupByModule}
-              onChange={(e) => setGroupByModule(e.target.checked)}
-            />
-            Group by module
-          </label>
-
-          {/* Chips */}
-          <div className="ml-3 flex items-center gap-2">
-            <span className="inline-flex items-center rounded-lg bg-gray-100 px-2.5 py-1 text-xs">
-              Total Articles
-              <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white px-1 ring-1 ring-gray-200">
-                {totalArticles}
-              </span>
-            </span>
-            <span className="inline-flex items-center rounded-lg bg-gray-100 px-2.5 py-1 text-xs">
-              Modules in View
-              <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white px-1 ring-1 ring-gray-200">
-                {moduleCounts.length}
-              </span>
-            </span>
-          </div>
         </div>
       </header>
 
-      {/* Stats on top, Articles below */}
+      {/* Stats */}
       <main className="mx-auto max-w-7xl px-4 py-6 space-y-5">
-        {/* Stats card */}
         <section className="rounded-xl bg-white ring-1 ring-gray-200">
           <div className="p-4 border-b">
             <h2 className="text-sm font-semibold">By Module</h2>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3">
-            <div className="md:col-span-2 h-72 p-4">
+            {/* Bar Chart */}
+            <div className="md:col-span-2 h-80 p-4">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={moduleCounts.map((d) => ({ name: d.name, value: d.count }))}
-                    dataKey="value"
-                    innerRadius={60}
-                    outerRadius={85}
-                    paddingAngle={3}
-                    label={renderPieLabel}
-                    labelLine={false}
-                  >
-                    {moduleCounts.map((_, index) => (
-                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
+                <BarChart data={moduleCounts} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis type="category" dataKey="name" />
                   <Tooltip />
                   <Legend />
-                </PieChart>
+                  <Bar dataKey="count" fill="#6366F1" />
+                </BarChart>
               </ResponsiveContainer>
             </div>
 
+            {/* Table */}
             <div className="p-4">
               <h3 className="text-xs text-gray-500 mb-2">Totals</h3>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left border-b">
-                    <th className="py-1.5 font-medium">Item</th>
+                    <th className="py-1.5 font-medium">Module</th>
                     <th className="py-1.5 font-medium">Count</th>
                     <th className="py-1.5 font-medium">% of Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-b">
-                    <td className="py-2 font-medium">Total Articles</td>
-                    <td className="py-2">{totalArticles}</td>
-                    <td className="py-2">100%</td>
-                  </tr>
                   {moduleCounts.map((m) => (
                     <tr key={m.name} className="border-b last:border-0">
                       <td className="py-2">{m.name}</td>
                       <td className="py-2">{m.count}</td>
                       <td className="py-2">
-                        {totalArticles ? Math.round((m.count / totalArticles) * 100) : 0}%
+                        {totalArticles
+                          ? Math.round((m.count / totalArticles) * 100)
+                          : 0}
+                        %
                       </td>
                     </tr>
                   ))}
+                  <tr>
+                    <td className="py-2 font-medium">Total</td>
+                    <td className="py-2">{totalArticles}</td>
+                    <td className="py-2">100%</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
           </div>
         </section>
 
-        {/* Articles below the stats */}
-        {groupByModule ? (
-          // GROUPED BY MODULE
-          <div className="space-y-5">
-            {groupedArticles.map(({ module, items }) => (
-              <section key={module} className="rounded-xl bg-white ring-1 ring-gray-200">
-                <div className="px-4 py-3 border-b flex items-center gap-3">
-                  <h2 className="text-sm font-semibold">{module}</h2>
-                  <span className="text-xs text-gray-500">({items.length})</span>
-                </div>
-                <div className="p-4">
-                  <ArticleGrid articles={items} />
-                </div>
-              </section>
-            ))}
-            {groupedArticles.length === 0 && (
-              <div className="rounded-xl bg-white ring-1 ring-gray-200 p-6 text-sm text-gray-500">
-                No articles found.
-              </div>
-            )}
+        {/* Articles */}
+        <section className="rounded-xl bg-white ring-1 ring-gray-200">
+          <div className="px-4 py-3 border-b">
+            <h2 className="text-sm font-semibold">
+              {totalArticles} Articles
+            </h2>
           </div>
-        ) : (
-          // FLAT LIST
-          <section className="rounded-xl bg-white ring-1 ring-gray-200">
-            <div className="px-4 py-3 border-b">
-              <h2 className="text-sm font-semibold">{totalArticles} Articles</h2>
-            </div>
-            <div className="p-4">
-              <ArticleGrid articles={flatArticles} />
-            </div>
-          </section>
-        )}
+          <div className="p-4">
+            <ArticleGrid articles={flatArticles} />
+          </div>
+        </section>
       </main>
     </div>
   );
