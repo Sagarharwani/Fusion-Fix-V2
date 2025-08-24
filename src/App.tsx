@@ -57,12 +57,50 @@ const renderPieLabel = ({
   );
 };
 
+/** ---------- Search helpers (wildcards % and _) ---------- */
+
+// Normalize text for searching
+function normalize(s: string) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, ""); // strip accents
+}
+
+// Convert a SQL-like pattern (with % and _) into a JS regex
+function sqlLikeToRegex(pattern: string): RegExp {
+  // Escape all regex specials first
+  const esc = pattern.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+  // Then translate SQL wildcards
+  const withWildcards = esc.replace(/%/g, ".*").replace(/_/g, ".");
+  return new RegExp(withWildcards, "i");
+}
+
+// Match function: if pattern has % or _, use wildcard; else plain substring
+function matchesQuery(haystack: string, q: string): boolean {
+  const h = normalize(haystack);
+  const query = q.trim();
+  if (!query) return true;
+
+  if (/[%_]/.test(query)) {
+    const re = sqlLikeToRegex(normalize(query));
+    return re.test(h);
+  }
+  return h.includes(normalize(query));
+}
+
+// Convert possibly-array fields to text for search haystack
+function toText(v?: string | string[]) {
+  if (!v) return "";
+  return Array.isArray(v) ? v.join(" ") : v;
+}
+
 /** ----------------------- App --------------------------- */
 export default function App() {
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string>("All");
-  const [groupByModule, setGroupByModule] = useState<boolean>(true); // NEW
+  const [groupByModule, setGroupByModule] = useState<boolean>(true);
 
   // Load from /public/solutions.json
   useEffect(() => {
@@ -83,17 +121,18 @@ export default function App() {
     return ["All", ...Array.from(set).sort()];
   }, [solutions]);
 
-  // Search + filter
+  // Search + filter (supports % and _ wildcards)
   const solutionsInView = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query; // keep original; matching handles case/accents
+
     return solutions.filter((s) => {
       const moduleOk = moduleFilter === "All" || s.module === moduleFilter;
       if (!moduleOk) return false;
 
-      if (!q) return true;
       const hay =
-        `${s.title} ${s.module} ${toText(s.rca)} ${toText(s.prechecks)} ${toText(s.steps)} ${toText(s.validation)} ${(s.tags ?? []).join(" ")}`.toLowerCase();
-      return hay.includes(q);
+        `${s.title} ${s.module} ${toText(s.rca)} ${toText(s.prechecks)} ${toText(s.steps)} ${toText(s.validation)} ${(s.tags ?? []).join(" ")}`;
+
+      return matchesQuery(hay, q);
     });
   }, [solutions, query, moduleFilter]);
 
@@ -153,10 +192,10 @@ export default function App() {
 
           <div className="flex-1" />
 
-          {/* Search */}
+          {/* Search (supports % and _) */}
           <input
             type="text"
-            placeholder="Search title, root cause, module, tags…"
+            placeholder="Search (supports % and _ wildcards)…  e.g.,  %invoi%error%"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-[360px] rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
@@ -288,7 +327,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          // FLAT LIST (like before)
+          // FLAT LIST
           <section className="rounded-xl bg-white ring-1 ring-gray-200">
             <div className="px-4 py-3 border-b">
               <h2 className="text-sm font-semibold">{totalArticles} Articles</h2>
@@ -301,10 +340,4 @@ export default function App() {
       </main>
     </div>
   );
-}
-
-/* ------ helpers ------ */
-function toText(v?: string | string[]) {
-  if (!v) return "";
-  return Array.isArray(v) ? v.join(" ") : v;
 }
