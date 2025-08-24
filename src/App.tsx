@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ArticleGrid, { type Article } from "./components/ArticleGrid";
 import {
   BarChart,
@@ -11,6 +11,7 @@ import {
   Legend,
 } from "recharts";
 
+/* ---------------- Types (UI expects these fields) ---------------- */
 type Solution = {
   id: string | number;
   title: string;
@@ -27,11 +28,54 @@ type Solution = {
 
 type ModuleCount = { name: string; count: number };
 
+/* -------------------- Wildcard query helpers -------------------- */
+// Normalize text for searching
+function normalize(s: string) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+// Convert a SQL-like pattern (with % and _) into a JS regex
+function sqlLikeToRegex(pattern: string): RegExp {
+  const esc = pattern.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const withWildcards = esc.replace(/%/g, ".*").replace(/_/g, ".");
+  return new RegExp(withWildcards, "i");
+}
+
+// Match function: if pattern has % or _, use wildcard; else plain substring
+function matchesQuery(haystack: string, q: string): boolean {
+  const h = normalize(haystack);
+  const query = q.trim();
+  if (!query) return true;
+
+  if (/[%_]/.test(query)) {
+    const re = sqlLikeToRegex(normalize(query));
+    return re.test(h);
+  }
+  return h.includes(normalize(query));
+}
+
+// Convert possibly-array fields to text for search haystack
+function toText(v?: string | string[]) {
+  if (!v) return "";
+  return Array.isArray(v) ? v.join(" ") : v;
+}
+
+/* --------------------- Small utility helpers -------------------- */
+const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const nowISO = () => new Date().toISOString();
+
+/* ================================ App ================================ */
 export default function App() {
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string>("All");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Load initial dataset
   useEffect(() => {
     (async () => {
       try {
@@ -44,23 +88,25 @@ export default function App() {
     })();
   }, []);
 
+  // All known modules (for dropdown)
   const modules = useMemo(() => {
     const set = new Set(solutions.map((s) => s.module).filter(Boolean));
     return ["All", ...Array.from(set).sort()];
   }, [solutions]);
 
+  // Filter + search (with wildcard)
   const solutionsInView = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query;
     return solutions.filter((s) => {
       const moduleOk = moduleFilter === "All" || s.module === moduleFilter;
       if (!moduleOk) return false;
-      if (!q) return true;
       const hay =
-        `${s.title} ${s.module} ${s.rca} ${s.prechecks} ${s.steps} ${s.validation} ${(s.tags ?? []).join(" ")}`.toLowerCase();
-      return hay.includes(q);
+        `${s.title} ${s.module} ${toText(s.rca)} ${toText(s.prechecks)} ${toText(s.steps)} ${toText(s.validation)} ${(s.tags ?? []).join(" ")}`;
+      return matchesQuery(hay, q);
     });
   }, [solutions, query, moduleFilter]);
 
+  // Module counts for chart & table
   const moduleCounts: ModuleCount[] = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of solutionsInView) {
@@ -73,6 +119,7 @@ export default function App() {
 
   const totalArticles = solutionsInView.length;
 
+  // Articles transformed for ArticleGrid
   const flatArticles: Article[] = useMemo(
     () =>
       solutionsInView.map((s) => ({
@@ -91,6 +138,169 @@ export default function App() {
     [solutionsInView]
   );
 
+  // Grouped by module
+  const groupedArticles = useMemo(() => {
+    const group = new Map<string, Article[]>();
+    for (const a of flatArticles) {
+      if (!group.has(a.module)) group.set(a.module, []);
+      group.get(a.module)!.push(a);
+    }
+    return Array.from(group.entries())
+      .map(([module, items]) => ({ module, items }))
+      .sort((a, b) => a.module.localeCompare(b.module));
+  }, [flatArticles]);
+
+  // Initialize expansion state when modules change
+  useEffect(() => {
+    if (!groupedArticles.length) return;
+    setExpanded((prev) => {
+      const next: Record<string, boolean> = { ...prev };
+      for (const { module } of groupedArticles) {
+        if (!(module in next)) next[module] = true; // default expanded
+      }
+      return next;
+    });
+  }, [groupedArticles]);
+
+  /* -------------------- Import / Export / Add -------------------- */
+
+  // Export all current solutions (not just filtered)
+  const handleExport = () => {
+    const blob = new Blob([JSON.stringify(solutions, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `solutions-export-${new Date()
+      .toISOString()
+      .slice(0, 19)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Click Import button
+  const triggerImport = () => fileInputRef.current?.click();
+
+  // Import JSON and append with basic dedupe (by (title+module))
+  const handleImport: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const arr = JSON.parse(text);
+      if (!Array.isArray(arr)) throw new Error("JSON must be an array");
+      const incoming: Solution[] = arr.map((r: any) => ({
+        id: r.id ?? uid(),
+        title: r.title ?? r.issueSignature ?? "Untitled",
+        module: r.module ?? "General",
+        severity: r.severity,
+        rca: r.rca ?? r.rootCause,
+        prechecks: r.prechecks ?? r.preChecks,
+        steps: r.steps ?? r.resolutionSteps,
+        validation: r.validation ?? r.postValidation,
+        tags: r.tags ?? [],
+        lastUpdated: r.lastUpdated ?? r.updatedAt ?? nowISO(),
+        links: r.links ?? r.references ?? [],
+      }));
+      // dedupe against existing by normalized (title+module)
+      const canon = (s: string) =>
+        s.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+      const seen = new Set(
+        solutions.map((s) => canon(`${s.title} ${s.module}`))
+      );
+      const merged = [
+        ...solutions,
+        ...incoming.filter((s) => !seen.has(canon(`${s.title} ${s.module}`))),
+      ];
+      setSolutions(merged);
+      // reset input
+      e.target.value = "";
+    } catch (err) {
+      console.error("Import failed:", err);
+      alert("Import failed: " + (err as Error).message);
+    }
+  };
+
+  // Add Article modal
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState<Partial<Solution>>({
+    module: "",
+    title: "",
+    severity: "",
+    tags: [],
+    rca: "",
+    prechecks: "",
+    steps: "",
+    validation: "",
+  });
+
+  const openAdd = () => setShowAdd(true);
+  const closeAdd = () => setShowAdd(false);
+
+  const submitAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title || !form.module) {
+      alert("Title and Module are required.");
+      return;
+    }
+    const toLines = (v: any) =>
+      typeof v === "string"
+        ? v
+            .split(/\r?\n/)
+            .map((x) => x.trim())
+            .filter(Boolean)
+        : Array.isArray(v)
+        ? v
+        : [];
+
+    const item: Solution = {
+      id: uid(),
+      title: String(form.title),
+      module: String(form.module),
+      severity: form.severity ? String(form.severity) : undefined,
+      tags:
+        typeof form.tags === "string"
+          ? String(form.tags)
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean)
+          : (form.tags as string[]) ?? [],
+      rca: form.rca ? String(form.rca) : undefined,
+      prechecks: toLines(form.prechecks),
+      steps: toLines(form.steps),
+      validation: toLines(form.validation),
+      lastUpdated: nowISO(),
+      links: [],
+    };
+
+    // basic dedupe by title+module
+    const canon = (s: string) =>
+      s.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    const exists = solutions.some(
+      (s) => canon(`${s.title} ${s.module}`) === canon(`${item.title} ${item.module}`)
+    );
+    if (exists) {
+      if (!confirm("A similar article already exists. Add anyway?")) {
+        return;
+      }
+    }
+
+    setSolutions((prev) => [item, ...prev]);
+    setShowAdd(false);
+    setForm({
+      module: "",
+      title: "",
+      severity: "",
+      tags: [],
+      rca: "",
+      prechecks: "",
+      steps: "",
+      validation: "",
+    });
+  };
+
+  /* ----------------------------- UI ----------------------------- */
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -100,7 +310,7 @@ export default function App() {
           <div className="flex-1" />
           <input
             type="text"
-            placeholder="Search title, root cause, module, tags…"
+            placeholder="Search (supports % and _ wildcards)…  e.g.,  %invoi%error%"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-[360px] rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
@@ -119,8 +329,9 @@ export default function App() {
         </div>
       </header>
 
-      {/* Stats */}
+      {/* Body */}
       <main className="mx-auto max-w-7xl px-4 py-6 space-y-5">
+        {/* Stats + Controls */}
         <section className="rounded-xl bg-white ring-1 ring-gray-200">
           <div className="p-4 border-b">
             <h2 className="text-sm font-semibold">By Module</h2>
@@ -135,58 +346,232 @@ export default function App() {
                   <YAxis type="category" dataKey="name" />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="count" fill="#6366F1" />
+                  <Bar dataKey="count" fill="#6366F1" name="count" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Table */}
-            <div className="p-4">
-              <h3 className="text-xs text-gray-500 mb-2">Totals</h3>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left border-b">
-                    <th className="py-1.5 font-medium">Module</th>
-                    <th className="py-1.5 font-medium">Count</th>
-                    <th className="py-1.5 font-medium">% of Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {moduleCounts.map((m) => (
-                    <tr key={m.name} className="border-b last:border-0">
-                      <td className="py-2">{m.name}</td>
-                      <td className="py-2">{m.count}</td>
-                      <td className="py-2">
-                        {totalArticles
-                          ? Math.round((m.count / totalArticles) * 100)
-                          : 0}
-                        %
-                      </td>
+            {/* Right sidebar: totals + import/export/add */}
+            <div className="p-4 space-y-4">
+              <div>
+                <h3 className="text-xs text-gray-500 mb-2">Totals</h3>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left border-b">
+                      <th className="py-1.5 font-medium">Module</th>
+                      <th className="py-1.5 font-medium">Count</th>
+                      <th className="py-1.5 font-medium">% of Total</th>
                     </tr>
-                  ))}
-                  <tr>
-                    <td className="py-2 font-medium">Total</td>
-                    <td className="py-2">{totalArticles}</td>
-                    <td className="py-2">100%</td>
-                  </tr>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {moduleCounts.map((m) => (
+                      <tr key={m.name} className="border-b last:border-0">
+                        <td className="py-2">{m.name}</td>
+                        <td className="py-2">{m.count}</td>
+                        <td className="py-2">
+                          {totalArticles
+                            ? Math.round((m.count / totalArticles) * 100)
+                            : 0}
+                          %
+                        </td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td className="py-2 font-medium">Total</td>
+                      <td className="py-2">{totalArticles}</td>
+                      <td className="py-2">100%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Controls */}
+              <div className="space-y-2">
+                <button
+                  onClick={openAdd}
+                  className="w-full rounded-lg bg-indigo-600 text-white px-3 py-2 text-sm hover:bg-indigo-700"
+                >
+                  + Add Article
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={triggerImport}
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                    title="Import JSON (array of articles)"
+                  >
+                    Import JSON
+                  </button>
+                  <button
+                    onClick={handleExport}
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                    title="Export current data to JSON"
+                  >
+                    Export JSON
+                  </button>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={handleImport}
+                />
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Articles */}
-        <section className="rounded-xl bg-white ring-1 ring-gray-200">
-          <div className="px-4 py-3 border-b">
-            <h2 className="text-sm font-semibold">
-              {totalArticles} Articles
-            </h2>
-          </div>
-          <div className="p-4">
-            <ArticleGrid articles={flatArticles} />
-          </div>
-        </section>
+        {/* Module-wise collapsible sections */}
+        <div className="space-y-5">
+          {groupedArticles.map(({ module, items }) => (
+            <section key={module} className="rounded-xl bg-white ring-1 ring-gray-200">
+              <button
+                onClick={() =>
+                  setExpanded((prev) => ({ ...prev, [module]: !prev[module] }))
+                }
+                className="w-full px-4 py-3 border-b flex items-center gap-3 text-left hover:bg-gray-50"
+                aria-expanded={!!expanded[module]}
+              >
+                <span
+                  className={`inline-block transition-transform ${
+                    expanded[module] ? "rotate-90" : "rotate-0"
+                  }`}
+                  aria-hidden
+                >
+                  ▶
+                </span>
+                <h2 className="text-sm font-semibold">{module}</h2>
+                <span className="text-xs text-gray-500">({items.length})</span>
+              </button>
+
+              {expanded[module] ? (
+                <div className="p-4">
+                  <ArticleGrid articles={items} />
+                </div>
+              ) : null}
+            </section>
+          ))}
+
+          {!groupedArticles.length && (
+            <div className="rounded-xl bg-white ring-1 ring-gray-200 p-6 text-sm text-gray-500">
+              No articles found.
+            </div>
+          )}
+        </div>
       </main>
+
+      {/* Add Article Modal */}
+      {showAdd ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={closeAdd} />
+          <div className="relative w-full max-w-3xl max-h-[90vh] overflow-auto rounded-2xl bg-white shadow-xl ring-1 ring-black/5 p-5">
+            <div className="flex items-start justify-between">
+              <h3 className="text-lg font-semibold">Add Article</h3>
+              <button
+                onClick={closeAdd}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={submitAdd} className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium">Module *</label>
+                <input
+                  value={form.module as string}
+                  onChange={(e) => setForm((f) => ({ ...f, module: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="AP / AR / GL / Payments / General ..."
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium">Severity</label>
+                <input
+                  value={(form.severity as string) || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="Low / Medium / High / Critical"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium">Title *</label>
+                <input
+                  value={form.title as string}
+                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="Issue Signature"
+                  required
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium">Tags (comma-separated)</label>
+                <input
+                  value={Array.isArray(form.tags) ? (form.tags as string[]).join(", ") : (form.tags as string) || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="DEV, TEST, UAT, PROD, AR..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium">Root Cause</label>
+                <textarea
+                  value={(form.rca as string) || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, rca: e.target.value }))}
+                  className="mt-1 w-full h-24 rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium">Pre-checks (one per line)</label>
+                <textarea
+                  value={(form.prechecks as string) || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, prechecks: e.target.value }))}
+                  className="mt-1 w-full h-24 rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium">Resolution Steps (one per line)</label>
+                <textarea
+                  value={(form.steps as string) || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, steps: e.target.value }))}
+                  className="mt-1 w-full h-28 rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium">Post-Validation (one per line)</label>
+                <textarea
+                  value={(form.validation as string) || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, validation: e.target.value }))}
+                  className="mt-1 w-full h-28 rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="md:col-span-2 flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeAdd}
+                  className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm hover:bg-indigo-700"
+                >
+                  Add
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
