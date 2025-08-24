@@ -28,36 +28,40 @@ type Solution = {
 
 type ModuleCount = { name: string; count: number };
 
+/* ---------- Separate, TS-safe Add Form type (all strings) --------- */
+type AddForm = {
+  module: string;
+  title: string;
+  severity: string;
+  tagsInput: string;  // comma-separated
+  rca: string;
+  prechecks: string;  // newline-separated
+  steps: string;      // newline-separated
+  validation: string; // newline-separated
+};
+
 /* -------------------- Wildcard query helpers -------------------- */
-// Normalize text for searching
 function normalize(s: string) {
   return (s || "")
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "");
 }
-
-// Convert a SQL-like pattern (with % and _) into a JS regex
 function sqlLikeToRegex(pattern: string): RegExp {
   const esc = pattern.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
   const withWildcards = esc.replace(/%/g, ".*").replace(/_/g, ".");
   return new RegExp(withWildcards, "i");
 }
-
-// Match function: if pattern has % or _, use wildcard; else plain substring
 function matchesQuery(haystack: string, q: string): boolean {
   const h = normalize(haystack);
   const query = q.trim();
   if (!query) return true;
-
   if (/[%_]/.test(query)) {
     const re = sqlLikeToRegex(normalize(query));
     return re.test(h);
   }
   return h.includes(normalize(query));
 }
-
-// Convert possibly-array fields to text for search haystack
 function toText(v?: string | string[]) {
   if (!v) return "";
   return Array.isArray(v) ? v.join(" ") : v;
@@ -184,7 +188,7 @@ export default function App() {
 
   // Import JSON and append with basic dedupe (by (title+module))
   const handleImport: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const file = e.target.files?.[0];
+    const file = e.currentTarget.files?.[0];
     if (!file) return;
     try {
       const text = await file.text();
@@ -199,11 +203,10 @@ export default function App() {
         prechecks: r.prechecks ?? r.preChecks,
         steps: r.steps ?? r.resolutionSteps,
         validation: r.validation ?? r.postValidation,
-        tags: r.tags ?? [],
+        tags: Array.isArray(r.tags) ? r.tags : typeof r.tags === "string" ? r.tags.split(",").map((x:string)=>x.trim()).filter(Boolean) : [],
         lastUpdated: r.lastUpdated ?? r.updatedAt ?? nowISO(),
         links: r.links ?? r.references ?? [],
       }));
-      // dedupe against existing by normalized (title+module)
       const canon = (s: string) =>
         s.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
       const seen = new Set(
@@ -214,21 +217,20 @@ export default function App() {
         ...incoming.filter((s) => !seen.has(canon(`${s.title} ${s.module}`))),
       ];
       setSolutions(merged);
-      // reset input
-      e.target.value = "";
+      e.currentTarget.value = "";
     } catch (err) {
       console.error("Import failed:", err);
       alert("Import failed: " + (err as Error).message);
     }
   };
 
-  // Add Article modal
+  // Add Article modal (strict string state)
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState<Partial<Solution>>({
+  const [form, setForm] = useState<AddForm>({
     module: "",
     title: "",
     severity: "",
-    tags: [],
+    tagsInput: "",
     rca: "",
     prechecks: "",
     steps: "",
@@ -240,33 +242,28 @@ export default function App() {
 
   const submitAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title || !form.module) {
+    if (!form.title.trim() || !form.module.trim()) {
       alert("Title and Module are required.");
       return;
     }
-    const toLines = (v: any) =>
-      typeof v === "string"
-        ? v
-            .split(/\r?\n/)
-            .map((x) => x.trim())
-            .filter(Boolean)
-        : Array.isArray(v)
-        ? v
-        : [];
+    const toLines = (v: string) =>
+      v
+        .split(/\r?\n/)
+        .map((x) => x.trim())
+        .filter(Boolean);
 
     const item: Solution = {
       id: uid(),
-      title: String(form.title),
-      module: String(form.module),
-      severity: form.severity ? String(form.severity) : undefined,
-      tags:
-        typeof form.tags === "string"
-          ? String(form.tags)
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean)
-          : (form.tags as string[]) ?? [],
-      rca: form.rca ? String(form.rca) : undefined,
+      title: form.title.trim(),
+      module: form.module.trim(),
+      severity: form.severity.trim() || undefined,
+      tags: form.tagsInput
+        ? form.tagsInput
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : [],
+      rca: form.rca.trim() || undefined,
       prechecks: toLines(form.prechecks),
       steps: toLines(form.steps),
       validation: toLines(form.validation),
@@ -274,16 +271,16 @@ export default function App() {
       links: [],
     };
 
-    // basic dedupe by title+module
     const canon = (s: string) =>
       s.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
     const exists = solutions.some(
       (s) => canon(`${s.title} ${s.module}`) === canon(`${item.title} ${item.module}`)
     );
     if (exists) {
-      if (!confirm("A similar article already exists. Add anyway?")) {
-        return;
-      }
+      const proceed = window.confirm(
+        "A similar article already exists. Add anyway?"
+      );
+      if (!proceed) return;
     }
 
     setSolutions((prev) => [item, ...prev]);
@@ -292,7 +289,7 @@ export default function App() {
       module: "",
       title: "",
       severity: "",
-      tags: [],
+      tagsInput: "",
       rca: "",
       prechecks: "",
       steps: "",
@@ -481,7 +478,7 @@ export default function App() {
               <div>
                 <label className="block text-sm font-medium">Module *</label>
                 <input
-                  value={form.module as string}
+                  value={form.module}
                   onChange={(e) => setForm((f) => ({ ...f, module: e.target.value }))}
                   className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
                   placeholder="AP / AR / GL / Payments / General ..."
@@ -491,7 +488,7 @@ export default function App() {
               <div>
                 <label className="block text-sm font-medium">Severity</label>
                 <input
-                  value={(form.severity as string) || ""}
+                  value={form.severity}
                   onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value }))}
                   className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
                   placeholder="Low / Medium / High / Critical"
@@ -501,7 +498,7 @@ export default function App() {
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium">Title *</label>
                 <input
-                  value={form.title as string}
+                  value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                   className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
                   placeholder="Issue Signature"
@@ -512,8 +509,8 @@ export default function App() {
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium">Tags (comma-separated)</label>
                 <input
-                  value={Array.isArray(form.tags) ? (form.tags as string[]).join(", ") : (form.tags as string) || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
+                  value={form.tagsInput}
+                  onChange={(e) => setForm((f) => ({ ...f, tagsInput: e.target.value }))}
                   className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
                   placeholder="DEV, TEST, UAT, PROD, AR..."
                 />
@@ -522,7 +519,7 @@ export default function App() {
               <div>
                 <label className="block text-sm font-medium">Root Cause</label>
                 <textarea
-                  value={(form.rca as string) || ""}
+                  value={form.rca}
                   onChange={(e) => setForm((f) => ({ ...f, rca: e.target.value }))}
                   className="mt-1 w-full h-24 rounded-lg border px-3 py-2 text-sm"
                 />
@@ -530,7 +527,7 @@ export default function App() {
               <div>
                 <label className="block text-sm font-medium">Pre-checks (one per line)</label>
                 <textarea
-                  value={(form.prechecks as string) || ""}
+                  value={form.prechecks}
                   onChange={(e) => setForm((f) => ({ ...f, prechecks: e.target.value }))}
                   className="mt-1 w-full h-24 rounded-lg border px-3 py-2 text-sm"
                 />
@@ -539,7 +536,7 @@ export default function App() {
               <div>
                 <label className="block text-sm font-medium">Resolution Steps (one per line)</label>
                 <textarea
-                  value={(form.steps as string) || ""}
+                  value={form.steps}
                   onChange={(e) => setForm((f) => ({ ...f, steps: e.target.value }))}
                   className="mt-1 w-full h-28 rounded-lg border px-3 py-2 text-sm"
                 />
@@ -547,7 +544,7 @@ export default function App() {
               <div>
                 <label className="block text-sm font-medium">Post-Validation (one per line)</label>
                 <textarea
-                  value={(form.validation as string) || ""}
+                  value={form.validation}
                   onChange={(e) => setForm((f) => ({ ...f, validation: e.target.value }))}
                   className="mt-1 w-full h-28 rounded-lg border px-3 py-2 text-sm"
                 />
